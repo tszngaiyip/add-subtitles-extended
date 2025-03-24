@@ -19,7 +19,7 @@
         "default_icon": "icons/icon-32.png",
         "default_title": "Add Subtitles"
     },
-    "applications": {
+    "browser_specific_settings": {
         "gecko": {
             "id": "add-subtitles-extended@tszngaiyip.github.io",
             "update_url": "https://raw.githubusercontent.com/tszngaiyip/add-subtitles-extended/master/updates.json"
