@@ -1,8 +1,8 @@
 (function(){
 
 if(window.has_run){
-    var shadow_root = document.getElementById("shadow_host").shadowRoot;
-    var menu = shadow_root.getElementById("addsubtitle_menu");
+    const shadow_root = document.getElementById("shadow_host").shadowRoot;
+    const menu = shadow_root.getElementById("addsubtitle_menu");
     menu.style.display = menu.style.display == "none" ? "inline-block" : "none";
     return;
 }
@@ -14,19 +14,159 @@ else{
 }
 window.has_run = true;
 
-var subtitle_element = document.createElement("div");
+// 全域變數定義 - 移除重複宣告，這些變數將在後面正確定義
+
+// 新增：性能優化相關變數
+// subtitleCache 將在後面以類別的形式定義
+let isLargeFile = false;
+const LARGE_FILE_THRESHOLD = 1024 * 1024; // 1MB
+let loadingProgress = 0;
+
+// 新增：錯誤處理類
+class SubtitleError extends Error {
+    constructor(message, type = 'GENERAL', details = null) {
+        super(message);
+        this.name = 'SubtitleError';
+        this.type = type;
+        this.details = details;
+    }
+}
+
+// 新增：檔案驗證類
+class FileValidator {
+    static SUPPORTED_FORMATS = ['srt', 'vtt', 'ass', 'ssa'];
+    static MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+    
+    static validateFile(file) {
+        const errors = [];
+        
+        if (!file) {
+            throw new SubtitleError('未選擇檔案', 'FILE_NOT_SELECTED');
+        }
+        
+        // 檔案大小檢查
+        if (file.size > this.MAX_FILE_SIZE) {
+            throw new SubtitleError(
+                `檔案過大 (${Math.round(file.size / 1024 / 1024)}MB)，最大支援 ${this.MAX_FILE_SIZE / 1024 / 1024}MB`,
+                'FILE_TOO_LARGE'
+            );
+        }
+        
+        // 檔案格式檢查
+        const extension = file.name.split('.').pop().toLowerCase();
+        if (!this.SUPPORTED_FORMATS.includes(extension)) {
+            throw new SubtitleError(
+                `不支援的檔案格式: .${extension}。支援格式: ${this.SUPPORTED_FORMATS.join(', ')}`,
+                'UNSUPPORTED_FORMAT'
+            );
+        }
+        
+        return {
+            isLarge: file.size > LARGE_FILE_THRESHOLD,
+            format: extension,
+            size: file.size
+        };
+    }
+    
+    static validateContent(content, format) {
+        if (!content || content.trim().length === 0) {
+            throw new SubtitleError('字幕檔案內容為空', 'EMPTY_CONTENT');
+        }
+        
+        // 格式特定驗證
+        switch(format) {
+            case 'srt':
+                if (!this.validateSRTFormat(content)) {
+                    throw new SubtitleError('SRT 格式驗證失敗', 'INVALID_SRT_FORMAT');
+                }
+                break;
+            case 'vtt':
+                if (!content.includes('WEBVTT')) {
+                    throw new SubtitleError('VTT 格式驗證失敗：缺少 WEBVTT 標識', 'INVALID_VTT_FORMAT');
+                }
+                break;
+            case 'ass':
+            case 'ssa':
+                if (!content.includes('[Events]') || !content.includes('[Script Info]')) {
+                    throw new SubtitleError('ASS/SSA 格式驗證失敗：缺少必要區段', 'INVALID_ASS_FORMAT');
+                }
+                break;
+        }
+        
+        return true;
+    }
+    
+    static validateSRTFormat(content) {
+        const blocks = content.trim().split(/\n\s*\n/);
+        if (blocks.length === 0) return false;
+        
+        // 檢查至少一個字幕塊的格式
+        const firstBlock = blocks[0].trim().split('\n');
+        if (firstBlock.length < 3) return false;
+        
+        // 檢查序號
+        const sequenceNumber = parseInt(firstBlock[0]);
+        if (isNaN(sequenceNumber)) return false;
+        
+        // 檢查時間格式
+        const timePattern = /^\d{2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{2}:\d{2}:\d{2},\d{3}$/;
+        return timePattern.test(firstBlock[1]);
+    }
+}
+
+// 新增：進度顯示類
+class ProgressIndicator {
+    constructor(container) {
+        this.container = container;
+        this.progressElement = null;
+    }
+    
+    show(message = '載入中...') {
+        if (this.progressElement) {
+            this.hide();
+        }
+        
+        this.progressElement = document.createElement('div');
+        this.progressElement.className = 'loading-progress';
+        this.progressElement.innerHTML = `
+            <div class="loading-message">${message}</div>
+            <div class="loading-bar">
+                <div class="loading-fill" style="width: 0%"></div>
+            </div>
+        `;
+        
+        this.container.appendChild(this.progressElement);
+    }
+    
+    updateProgress(percent, message) {
+        if (!this.progressElement) return;
+        
+        const fill = this.progressElement.querySelector('.loading-fill');
+        const messageEl = this.progressElement.querySelector('.loading-message');
+        
+        if (fill) fill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+        if (message && messageEl) messageEl.textContent = message;
+    }
+    
+    hide() {
+        if (this.progressElement) {
+            this.progressElement.remove();
+            this.progressElement = null;
+        }
+    }
+}
+
+const subtitle_element = document.createElement("div");
 subtitle_element.id = "subtitle_element";
 document.body.append(subtitle_element);
 
-var video_fullscreen = false;
-
-var shadow_host = document.createElement("div");
+const shadow_host = document.createElement("div");
 shadow_host.id = "shadow_host";
 document.body.appendChild(shadow_host);
-var shadow = shadow_host.attachShadow({mode: "open"});
-var shadow_root = shadow_host.shadowRoot;
+const shadow = shadow_host.attachShadow({mode: "open"});
+const shadow_root = shadow_host.shadowRoot;
 
-var menu = document.createElement("div");
+const menu = document.createElement("div");
 menu.id = "addsubtitle_menu";
 
 // 使用DOM方法而非innerHTML
@@ -48,32 +188,35 @@ line.appendChild(refreshButton);
 
 menu.appendChild(line);
 
-var video_elements_list = document.createElement("div");
+const video_elements_list = document.createElement("div");
 video_elements_list.id = "video_elements_list";
 menu.appendChild(video_elements_list);
 
-var make_video_fullscreen = document.createElement("div");
+const make_video_fullscreen = document.createElement("div");
 make_video_fullscreen.className = "line";
 
-var make_video_fullscreen_button = document.createElement("button");
+const make_video_fullscreen_button = document.createElement("button");
 make_video_fullscreen_button.id = "make_video_fullscreen";
 make_video_fullscreen_button.textContent = "Make video fullscreen";
 make_video_fullscreen.appendChild(make_video_fullscreen_button);
 
 menu.appendChild(make_video_fullscreen);
 
-var subtitle_file_fieldset = document.createElement("fieldset");
+const subtitle_file_fieldset = document.createElement("fieldset");
 subtitle_file_fieldset.innerHTML = `
     <legend>Subtitles file:</legend>
     <div class="line">
-        Upload file: <input type="file" accept=".srt,.vtt,.ass" id="subtitle_file_input" autocomplete="off">
+        Upload file: <input type="file" accept=".srt,.vtt,.ass,.ssa" id="subtitle_file_input" autocomplete="off">
     </div>
     <div class="line">
         Or from URL (zip supported): <input type="text" id="subtitle_url_input" autocomplete="off">
     </div>
     <div class="line">
-        <button id="subtitle_upload_button">Upload</button> <span id="upload_error_message"></span>
+        <button id="subtitle_upload_button">Upload</button> 
+        <button id="retry_button" style="display:none;">重試</button>
+        <span id="upload_error_message"></span>
     </div>
+    <div id="upload_progress_container"></div>
 `;
 menu.appendChild(subtitle_file_fieldset);
 
@@ -179,6 +322,54 @@ style.textContent = `
     line-height: normal !important;
     box-sizing: border-box !important;
 }
+
+/* 新增：進度條樣式 */
+.loading-progress {
+    margin-top: 10px;
+    padding: 10px;
+    background-color: #f0f0f0;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+}
+
+.loading-message {
+    font-size: 12px;
+    color: #333;
+    margin-bottom: 8px;
+}
+
+.loading-bar {
+    width: 100%;
+    height: 20px;
+    background-color: #e0e0e0;
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+}
+
+.loading-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4CAF50, #45a049);
+    border-radius: 10px;
+    transition: width 0.3s ease;
+    position: relative;
+}
+
+.loading-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    animation: loading-shimmer 1.5s infinite;
+}
+
+@keyframes loading-shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
 button{
     cursor: pointer;
 }
@@ -253,8 +444,8 @@ input:not([type="file"]){
 `;
 shadow.appendChild(style);
 
-style = document.createElement("style");
-style.textContent = `
+var globalStyle = document.createElement("style");
+globalStyle.textContent = `
 .hover_video_element{
     border: 4px solid red;
 }
@@ -267,9 +458,7 @@ style.textContent = `
     text-align: center;
     z-index: 99999;
 }`;
-document.getElementsByTagName("head")[0].appendChild(style);
-
-var the_video_element = null;
+document.getElementsByTagName("head")[0].appendChild(globalStyle);
 
 function update_video_elements_list(){
     var video_elements = document.getElementsByTagName("video");
@@ -323,19 +512,93 @@ function update_video_elements_list(){
     }
 }
 
-var subtitle_element = document.getElementById("subtitle_element");
-var subtitle_offset = parseFloat(shadow_root.getElementById("subtitle_offset_input").value);
-var subtitle_offset_top = parseFloat(shadow_root.getElementById("subtitle_offset_top_input").value);
+// 改善：使用現代化變數宣告和初始化
+let subtitle_offset = parseFloat(shadow_root.getElementById("subtitle_offset_input").value);
+let subtitle_offset_top = parseFloat(shadow_root.getElementById("subtitle_offset_top_input").value);
 
-var subtitles = [];
+let subtitles = [];
+let the_video_element = null;
 
-var subtitle_font = shadow_root.getElementById("subtitle_font").value;
-var subtitle_font_size = shadow_root.getElementById("subtitle_font_size").value;
-var subtitle_font_color = shadow_root.getElementById("subtitle_font_color").value;
-var subtitle_background_color = shadow_root.getElementById("subtitle_background_color").value;
+let subtitle_font = shadow_root.getElementById("subtitle_font").value;
+let subtitle_font_size = shadow_root.getElementById("subtitle_font_size").value;
+let subtitle_font_color = shadow_root.getElementById("subtitle_font_color").value;
+let subtitle_background_color = shadow_root.getElementById("subtitle_background_color").value;
 
-// 簡體轉繁體功能
-var enableS2T = true; // 永遠啟用簡繁轉換
+// 新增：性能優化 - 字幕緩存管理
+class SubtitleCache {
+    constructor(maxSize = 10) {
+        this.cache = new Map();
+        this.maxSize = maxSize;
+        this.accessOrder = [];
+    }
+    
+    set(key, value) {
+        if (this.cache.has(key)) {
+            // 更新訪問順序
+            this.accessOrder = this.accessOrder.filter(k => k !== key);
+        } else if (this.cache.size >= this.maxSize) {
+            // 移除最舊的項目
+            const oldest = this.accessOrder.shift();
+            this.cache.delete(oldest);
+        }
+        
+        this.cache.set(key, value);
+        this.accessOrder.push(key);
+    }
+    
+    get(key) {
+        if (this.cache.has(key)) {
+            // 更新訪問順序
+            this.accessOrder = this.accessOrder.filter(k => k !== key);
+            this.accessOrder.push(key);
+            return this.cache.get(key);
+        }
+        return null;
+    }
+    
+    has(key) {
+        return this.cache.has(key);
+    }
+    
+    clear() {
+        this.cache.clear();
+        this.accessOrder = [];
+    }
+}
+
+const subtitleCache = new SubtitleCache();
+
+// 新增：網路請求重試機制
+class NetworkRetry {
+    static async fetchWithRetry(url, options = {}, maxRetries = 3) {
+        let lastError;
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const response = await fetch(url, options);
+                if (response.ok) {
+                    return response;
+                }
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            } catch (error) {
+                lastError = error;
+                console.warn(`請求失敗 (嘗試 ${attempt}/${maxRetries}):`, error.message);
+                
+                if (attempt < maxRetries) {
+                    // 指數退避策略
+                    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+        }
+        
+        throw new SubtitleError(
+            `網路請求失敗，已重試 ${maxRetries} 次: ${lastError.message}`,
+            'NETWORK_ERROR',
+            { url, attempts: maxRetries, lastError }
+        );
+    }
+}
 
 // 簡繁轉換系統 - 純 OpenCC-JS 方案
 class ChineseConverter {
@@ -445,10 +708,7 @@ class ChineseConverter {
 // 創建全局轉換器實例
 const chineseConverter = new ChineseConverter();
 
-// 簡體轉繁體函數 - 純 OpenCC 方案
-function convertSimplifiedToTraditional(text) {
-    return chineseConverter.convert(text);
-}
+
 
 function xss(input){
     input = input.replace(/\&/g, "&amp;");
@@ -462,7 +722,7 @@ function xss(input){
 
 function allow_tags(input, tags){
     // 先進行簡繁轉換，直接轉換，無需條件判斷
-    input = convertSimplifiedToTraditional(input);
+    input = chineseConverter.convert(input);
     
     // 只處理允許的標籤，更安全的方式
     for(var i = 0; i < tags.length; i++){
@@ -715,7 +975,7 @@ function cleanAssFormatting(text) {
     text = text.replace(/{[^}]*}/g, '');
     
     // 對清理後的文本進行簡繁轉換，直接轉換，無需條件判斷
-    text = convertSimplifiedToTraditional(text);
+    text = chineseConverter.convert(text);
     
     return text;
 }
@@ -774,31 +1034,266 @@ function ass_time_parse(t) {
     return hours + minutes + seconds;
 }
 
-// 修改原始 parse_subtitles 函數，增加對 ASS 格式的檢測
-function parse_subtitles(subs) {
-    // 檢查是否為 ASS 格式
-    if (subs.includes('[Script Info]') && subs.includes('[Events]')) {
-        parse_ass_subtitles(subs);
-        return;
+// 改善：現代化的字幕解析函數，增加錯誤處理和驗證
+async function parse_subtitles(subs, format = 'auto') {
+    try {
+        // 清空現有字幕
+        subtitles.length = 0;
+        
+        // 檢查緩存
+        const cacheKey = btoa(subs.substring(0, 1000)); // 使用前1000字符作為緩存鍵
+        if (subtitleCache.has(cacheKey)) {
+            const cached = subtitleCache.get(cacheKey);
+            subtitles.push(...cached);
+            console.log('使用緩存的字幕數據');
+            return;
+        }
+        
+        // 自動檢測格式
+        if (format === 'auto') {
+            format = detectSubtitleFormat(subs);
+        }
+        
+        // 驗證內容
+        FileValidator.validateContent(subs, format);
+        
+        let parsedSubtitles = [];
+        
+        // 根據格式選擇解析器
+        switch(format) {
+            case 'ass':
+            case 'ssa':
+                parsedSubtitles = await parseAssSubtitles(subs);
+                break;
+            case 'vtt':
+                parsedSubtitles = await parseVttSubtitles(subs);
+                break;
+            case 'srt':
+            default:
+                parsedSubtitles = await parseSrtSubtitles(subs);
+                break;
+        }
+        
+        // 驗證解析結果
+        validateParsedSubtitles(parsedSubtitles);
+        
+        // 排序字幕
+        parsedSubtitles.sort((a, b) => a.begin - b.begin);
+        
+        // 儲存到全域變數和緩存
+        subtitles.push(...parsedSubtitles);
+        subtitleCache.set(cacheKey, parsedSubtitles);
+        
+        console.log(`成功解析 ${subtitles.length} 條字幕 (${format.toUpperCase()} 格式)`);
+        
+    } catch (error) {
+        if (error instanceof SubtitleError) {
+            throw error;
+        }
+        throw new SubtitleError(
+            `字幕解析失敗: ${error.message}`,
+            'PARSE_ERROR',
+            { originalError: error }
+        );
+    }
+}
+
+// 新增：格式檢測函數
+function detectSubtitleFormat(content) {
+    const trimmed = content.trim();
+    
+    if (trimmed.includes('[Script Info]') && trimmed.includes('[Events]')) {
+        return trimmed.includes('Format: Layer') ? 'ass' : 'ssa';
     }
     
-    // 原始 SRT/VTT 解析邏輯
-    subtitles.length = 0;
-    subs = subs.replace(/\r/g, "");
-    subs = subs.split("\n\n");
+    if (trimmed.startsWith('WEBVTT')) {
+        return 'vtt';
+    }
+    
+    // 檢查是否為SRT格式（包含時間戳格式）
+    if (/^\d+\s*\n\d{2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{2}:\d{2}:\d{2},\d{3}/m.test(trimmed)) {
+        return 'srt';
+    }
+    
+    // 預設為SRT
+    return 'srt';
+}
 
-    for(var i = 0; i < subs.length; i++){
-        s = subs[i].split("\n");
-        if(s.length <= 1) continue;
-        var pos = s[0].indexOf(" --> ") > 0 ? 0 : (s[1].indexOf(" --> ") > 0 ? 1 : -1);
-        if(pos <= -1) continue;
-        time = s[pos].split(" --> ");
-        text = [];
-        for(var j = pos + 1; j < s.length; j++){
-            // 簡繁轉換將在 allow_tags 中處理，這裡不需要額外處理
-            text.push(s[j]);
+// 改善的SRT解析器
+async function parseSrtSubtitles(subs) {
+    const parsedSubtitles = [];
+    subs = subs.replace(/\r/g, "");
+    const blocks = subs.split("\n\n");
+
+    for(let i = 0; i < blocks.length; i++){
+        const lines = blocks[i].trim().split("\n");
+        if(lines.length < 3) continue;
+        
+        // 找時間軸行
+        let timeLineIndex = -1;
+        for(let j = 0; j < Math.min(2, lines.length); j++) {
+            if(lines[j].includes(" --> ")) {
+                timeLineIndex = j;
+                break;
+            }
         }
-        subtitles.push({begin: time_parse(time[0]), end: time_parse(time[1]), text: text});
+        
+        if(timeLineIndex === -1) continue;
+        
+        try {
+            const timeParts = lines[timeLineIndex].split(" --> ");
+            if(timeParts.length !== 2) continue;
+            
+            const beginTime = time_parse(timeParts[0].trim());
+            const endTime = time_parse(timeParts[1].trim());
+            
+            // 驗證時間軸
+            if(isNaN(beginTime) || isNaN(endTime) || beginTime >= endTime) {
+                console.warn(`跳過無效時間軸: ${lines[timeLineIndex]}`);
+                continue;
+            }
+            
+            // 收集文字內容
+            const textLines = [];
+            for(let j = timeLineIndex + 1; j < lines.length; j++){
+                if(lines[j].trim()) {
+                    textLines.push(lines[j].trim());
+                }
+            }
+            
+            if(textLines.length > 0) {
+                parsedSubtitles.push({
+                    begin: beginTime,
+                    end: endTime,
+                    text: textLines
+                });
+            }
+        } catch (error) {
+            console.warn(`解析字幕塊失敗 (第${i+1}塊):`, error.message);
+        }
+    }
+    
+    return parsedSubtitles;
+}
+
+// 新增：VTT解析器
+async function parseVttSubtitles(subs) {
+    const parsedSubtitles = [];
+    const lines = subs.replace(/\r/g, "").split("\n");
+    
+    let i = 0;
+    // 跳過WEBVTT標頭
+    while(i < lines.length && !lines[i].includes("-->")) {
+        i++;
+    }
+    
+    while(i < lines.length) {
+        // 尋找時間軸行
+        while(i < lines.length && !lines[i].includes("-->")) {
+            i++;
+        }
+        
+        if(i >= lines.length) break;
+        
+        try {
+            const timeLine = lines[i];
+            const timeParts = timeLine.split(" --> ");
+            if(timeParts.length !== 2) {
+                i++;
+                continue;
+            }
+            
+            const beginTime = time_parse(timeParts[0].trim());
+            const endTime = time_parse(timeParts[1].split(' ')[0].trim()); // 移除VTT樣式標記
+            
+            if(isNaN(beginTime) || isNaN(endTime) || beginTime >= endTime) {
+                i++;
+                continue;
+            }
+            
+            // 收集文字
+            i++;
+            const textLines = [];
+            while(i < lines.length && lines[i].trim() !== "") {
+                if(lines[i].trim()) {
+                    textLines.push(lines[i].trim());
+                }
+                i++;
+            }
+            
+            if(textLines.length > 0) {
+                parsedSubtitles.push({
+                    begin: beginTime,
+                    end: endTime,
+                    text: textLines
+                });
+            }
+            
+        } catch (error) {
+            console.warn(`VTT解析錯誤:`, error.message);
+            i++;
+        }
+    }
+    
+    return parsedSubtitles;
+}
+
+// 重命名原有函數
+async function parseAssSubtitles(subs) {
+    return new Promise((resolve) => {
+        parse_ass_subtitles(subs);
+        resolve([...subtitles]);  // 返回副本
+    });
+}
+
+// 新增：字幕驗證函數
+function validateParsedSubtitles(parsedSubtitles) {
+    if (!Array.isArray(parsedSubtitles)) {
+        throw new SubtitleError('解析結果不是陣列', 'INVALID_PARSE_RESULT');
+    }
+    
+    if (parsedSubtitles.length === 0) {
+        throw new SubtitleError('未找到有效的字幕條目', 'NO_SUBTITLES_FOUND');
+    }
+    
+    // 檢查重疊和無效時間
+    let overlapCount = 0;
+    let invalidTimeCount = 0;
+    
+    for (let i = 0; i < parsedSubtitles.length; i++) {
+        const subtitle = parsedSubtitles[i];
+        
+        // 檢查時間有效性
+        if (typeof subtitle.begin !== 'number' || typeof subtitle.end !== 'number' ||
+            isNaN(subtitle.begin) || isNaN(subtitle.end) ||
+            subtitle.begin < 0 || subtitle.end <= subtitle.begin) {
+            invalidTimeCount++;
+            continue;
+        }
+        
+        // 檢查與下一個字幕的重疊
+        if (i < parsedSubtitles.length - 1) {
+            const nextSubtitle = parsedSubtitles[i + 1];
+            if (subtitle.end > nextSubtitle.begin) {
+                overlapCount++;
+            }
+        }
+    }
+    
+    if (invalidTimeCount > 0) {
+        console.warn(`發現 ${invalidTimeCount} 個無效時間軸的字幕`);
+    }
+    
+    if (overlapCount > 0) {
+        console.warn(`發現 ${overlapCount} 個重疊的字幕`);
+    }
+    
+    // 如果大部分字幕都有問題，拋出錯誤
+    if (invalidTimeCount > parsedSubtitles.length * 0.5) {
+        throw new SubtitleError(
+            `字幕品質過低：${invalidTimeCount}/${parsedSubtitles.length} 條字幕有時間軸問題`,
+            'POOR_QUALITY_SUBTITLES'
+        );
     }
 }
 
@@ -1298,66 +1793,210 @@ shadow_root.getElementById("refresh_video_list").addEventListener("click", funct
     update_video_elements_list();
 });
 
-shadow_root.getElementById("subtitle_upload_button").addEventListener("click", function(){
-    var subtitle_file_input = shadow_root.getElementById("subtitle_file_input");
-    var subtitle_url_input = shadow_root.getElementById("subtitle_url_input");
-    shadow_root.getElementById("upload_error_message").textContent = "";
-    if(subtitle_url_input.value.length > 0){
-        fetch(subtitle_url_input.value, {
-            method: "GET"
-        }).then(response => {
-            if(response.status == 200){
-                return response.blob();
-            }
-            else{
-                throw new Error("Request failed");
-            }
-        }).then((blob) => {
-            if(blob.type == "application/zip"){
-                blob.arrayBuffer().then(buffer => {
-                    var zip = new JSZip();
-                    zip.loadAsync(buffer).then(function(zip){
-                        var files = Object.entries(zip.files);
-                        var subtitle_file = null;
-                        for(var i = 0; i < files.length; i++){
-                            var file = files[i][1];
-                            var filename = file.name;
-                            var extension = filename.split(".");
-                            extension = extension[extension.length-1];
-                            if(extension == "srt" || extension == "vtt" || extension == "ass"){
-                                subtitle_file = file;
-                                break;
-                            }
-                        }
-                        zip.file(subtitle_file.name).async("string").then(text => {
-                            parse_subtitles(text);
-                        });
-                    });
-                });
-            }
-            else{
-                blob.text().then(text => {
-                    parse_subtitles(text);
-                });
-            }
-        }).catch((error) => {
-            shadow_root.getElementById("upload_error_message").textContent = error;
+// 改善：現代化的上傳處理，包含錯誤處理、重試機制和進度顯示
+shadow_root.getElementById("subtitle_upload_button").addEventListener("click", async function(){
+    const subtitle_file_input = shadow_root.getElementById("subtitle_file_input");
+    const subtitle_url_input = shadow_root.getElementById("subtitle_url_input");
+    const error_message_element = shadow_root.getElementById("upload_error_message");
+    const retry_button = shadow_root.getElementById("retry_button");
+    const progress_container = shadow_root.getElementById("upload_progress_container");
+    
+    // 重置錯誤訊息和重試按鈕
+    error_message_element.textContent = "";
+    retry_button.style.display = "none";
+    
+    // 建立進度指示器
+    const progressIndicator = new ProgressIndicator(progress_container);
+    
+    try {
+        if(subtitle_url_input.value.length > 0){
+            await handleUrlUpload(subtitle_url_input.value, progressIndicator);
+        } else {
+            await handleFileUpload(subtitle_file_input.files[0], progressIndicator);
+        }
+        
+        // 成功後清理
+        progressIndicator.hide();
+        subtitle_file_input.value = "";
+        subtitle_url_input.value = "";
+        
+    } catch (error) {
+        progressIndicator.hide();
+        handleUploadError(error, error_message_element, retry_button);
+    }
+});
+
+// 新增：處理URL上傳
+async function handleUrlUpload(url, progressIndicator) {
+    try {
+        progressIndicator.show('從 URL 載入字幕...');
+        progressIndicator.updateProgress(10, '正在下載...');
+        
+        const response = await NetworkRetry.fetchWithRetry(url);
+        const blob = await response.blob();
+        
+        progressIndicator.updateProgress(50, '解析檔案類型...');
+        
+        if(blob.type === "application/zip" || url.toLowerCase().endsWith('.zip')){
+            await handleZipFile(blob, progressIndicator);
+        } else {
+            progressIndicator.updateProgress(70, '讀取字幕內容...');
+            const text = await blob.text();
+            
+            progressIndicator.updateProgress(90, '解析字幕...');
+            await parse_subtitles(text);
+        }
+        
+        progressIndicator.updateProgress(100, '載入完成！');
+        
+    } catch (error) {
+        throw new SubtitleError(
+            `URL 載入失敗: ${error.message}`,
+            'URL_LOAD_ERROR',
+            { url, originalError: error }
+        );
+    }
+}
+
+// 新增：處理檔案上傳
+async function handleFileUpload(file, progressIndicator) {
+    try {
+        // 驗證檔案
+        const fileInfo = FileValidator.validateFile(file);
+        
+        progressIndicator.show(`載入 ${file.name}...`);
+        progressIndicator.updateProgress(20, '驗證檔案...');
+        
+        // 處理大檔案
+        if (fileInfo.isLarge) {
+            progressIndicator.updateProgress(30, '處理大檔案，請稍候...');
+            isLargeFile = true;
+        }
+        
+        progressIndicator.updateProgress(50, '讀取檔案內容...');
+        
+        const text = await readFileAsText(file, (percent) => {
+            progressIndicator.updateProgress(50 + percent * 0.3, '讀取中...');
         });
+        
+        progressIndicator.updateProgress(80, '解析字幕...');
+        await parse_subtitles(text, fileInfo.format);
+        
+        progressIndicator.updateProgress(100, '載入完成！');
+        
+    } catch (error) {
+        throw error; // 重新拋出，讓上級處理
     }
-    else{
-        var subtitle_file = subtitle_file_input.files[0];
-        if(subtitle_file == undefined){
-            shadow_root.getElementById("upload_error_message").textContent = "No file selected";
+}
+
+// 新增：處理ZIP檔案
+async function handleZipFile(blob, progressIndicator) {
+    try {
+        progressIndicator.updateProgress(30, '解壓縮檔案...');
+        
+        const buffer = await blob.arrayBuffer();
+        const zip = new JSZip();
+        const zipContent = await zip.loadAsync(buffer);
+        
+        progressIndicator.updateProgress(50, '搜尋字幕檔案...');
+        
+        const files = Object.entries(zipContent.files);
+        let subtitle_file = null;
+        
+        // 支援更多格式
+        const supportedExts = ['srt', 'vtt', 'ass', 'ssa'];
+        
+        for(const [filename, file] of files){
+            if(file.dir) continue; // 跳過資料夾
+            
+            const extension = filename.split(".").pop().toLowerCase();
+            if(supportedExts.includes(extension)){
+                subtitle_file = file;
+                break;
+            }
         }
-        var file_reader = new FileReader();
+        
+        if(!subtitle_file){
+            throw new SubtitleError(
+                `ZIP 檔案中未找到支援的字幕格式 (${supportedExts.join(', ')})`,
+                'NO_SUBTITLE_IN_ZIP'
+            );
+        }
+        
+        progressIndicator.updateProgress(70, `解壓縮 ${subtitle_file.name}...`);
+        const text = await subtitle_file.async("string");
+        
+        progressIndicator.updateProgress(90, '解析字幕...');
+        await parse_subtitles(text);
+        
+    } catch (error) {
+        throw new SubtitleError(
+            `ZIP 檔案處理失敗: ${error.message}`,
+            'ZIP_PROCESSING_ERROR',
+            { originalError: error }
+        );
+    }
+}
+
+// 新增：改善的檔案讀取功能
+function readFileAsText(file, progressCallback) {
+    return new Promise((resolve, reject) => {
+        const file_reader = new FileReader();
+        
         file_reader.onload = function(event){
-            parse_subtitles(event.target.result);
-        }
+            resolve(event.target.result);
+        };
+        
         file_reader.onerror = function(event){
-            shadow_root.getElementById("upload_error_message").textContent = event;
+            reject(new SubtitleError(
+                `檔案讀取失敗: ${event.target.error}`,
+                'FILE_READ_ERROR'
+            ));
+        };
+        
+        // 進度追蹤（對大檔案有效）
+        file_reader.onprogress = function(event) {
+            if (event.lengthComputable && progressCallback) {
+                const percent = (event.loaded / event.total) * 100;
+                progressCallback(percent);
+            }
+        };
+        
+        file_reader.readAsText(file);
+    });
+}
+
+// 新增：錯誤處理函數
+function handleUploadError(error, errorElement, retryButton) {
+    console.error('字幕上傳錯誤:', error);
+    
+    let errorMessage = '未知錯誤';
+    let showRetry = false;
+    
+    if (error instanceof SubtitleError) {
+        errorMessage = error.message;
+        
+        // 某些錯誤類型可以重試
+        if (['NETWORK_ERROR', 'ZIP_PROCESSING_ERROR', 'FILE_READ_ERROR'].includes(error.type)) {
+            showRetry = true;
         }
-        file_reader.readAsText(subtitle_file);
+    } else {
+        errorMessage = `載入失敗: ${error.message}`;
+        showRetry = true;
     }
+    
+    errorElement.textContent = errorMessage;
+    errorElement.style.color = "red";
+    
+    if (showRetry) {
+        retryButton.style.display = "inline-block";
+    }
+}
+
+// 新增：重試按鈕事件處理
+shadow_root.getElementById("retry_button").addEventListener("click", function(){
+    // 觸發上傳按鈕的點擊事件
+    shadow_root.getElementById("subtitle_upload_button").click();
 });
 
 shadow_root.getElementById("subtitle_offset_input").addEventListener("input", function(){
