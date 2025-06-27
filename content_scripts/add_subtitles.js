@@ -128,12 +128,24 @@ class ProgressIndicator {
         
         this.progressElement = document.createElement('div');
         this.progressElement.className = 'loading-progress';
-        this.progressElement.innerHTML = `
-            <div class="loading-message">${message}</div>
-            <div class="loading-bar">
-                <div class="loading-fill" style="width: 0%"></div>
-            </div>
-        `;
+        
+        // 創建消息元素
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'loading-message';
+        messageDiv.textContent = message;
+        this.progressElement.appendChild(messageDiv);
+        
+        // 創建進度條容器
+        const loadingBar = document.createElement('div');
+        loadingBar.className = 'loading-bar';
+        
+        // 創建進度條填充元素
+        const loadingFill = document.createElement('div');
+        loadingFill.className = 'loading-fill';
+        loadingFill.style.width = '0%';
+        loadingBar.appendChild(loadingFill);
+        
+        this.progressElement.appendChild(loadingBar);
         
         this.container.appendChild(this.progressElement);
     }
@@ -511,7 +523,10 @@ document.getElementsByTagName("head")[0].appendChild(globalStyle);
 function update_video_elements_list(){
     var video_elements = document.getElementsByTagName("video");
     var video_elements_list = shadow_root.getElementById("video_elements_list");
-    video_elements_list.innerHTML = "";
+    // 清空視頻元素列表
+    while (video_elements_list.firstChild) {
+        video_elements_list.removeChild(video_elements_list.firstChild);
+    }
     if(video_elements.length == 0){
         // 使用更安全的DOM方法替代innerHTML
         const noVideosDiv = document.createElement("div");
@@ -548,7 +563,10 @@ function update_video_elements_list(){
                 }
                 if(the_video_element == current_video_element){
                     the_video_element = null;
-                    subtitle_element.innerHTML = "";
+                    // 清空字幕內容
+                    while (subtitle_element.firstChild) {
+                        subtitle_element.removeChild(subtitle_element.firstChild);
+                    }
                 }
                 else{
                     the_video_element = current_video_element;
@@ -807,7 +825,10 @@ setInterval(function(){
         subtitle_element.textContent = "";
     }
     else{
-        subtitle_element.innerHTML = "";
+        // 清空字幕內容
+        while (subtitle_element.firstChild) {
+            subtitle_element.removeChild(subtitle_element.firstChild);
+        }
         for(var i = 0; i < subtitles[found].text.length; i++){
             var subtitle_line = document.createElement("div");
             var sanitizedText = allow_tags(xss(subtitles[found].text[i]), allowed_html_tags);
