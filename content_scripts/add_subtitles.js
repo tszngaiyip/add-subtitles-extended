@@ -203,21 +203,69 @@ make_video_fullscreen.appendChild(make_video_fullscreen_button);
 menu.appendChild(make_video_fullscreen);
 
 const subtitle_file_fieldset = document.createElement("fieldset");
-subtitle_file_fieldset.innerHTML = `
-    <legend>Subtitles file:</legend>
-    <div class="line">
-        Upload file: <input type="file" accept=".srt,.vtt,.ass,.ssa" id="subtitle_file_input" autocomplete="off">
-    </div>
-    <div class="line">
-        Or from URL (zip supported): <input type="text" id="subtitle_url_input" autocomplete="off">
-    </div>
-    <div class="line">
-        <button id="subtitle_upload_button">Upload</button> 
-        <button id="retry_button" style="display:none;">重試</button>
-        <span id="upload_error_message"></span>
-    </div>
-    <div id="upload_progress_container"></div>
-`;
+
+// 創建 legend 元素
+const legend = document.createElement("legend");
+legend.textContent = "Subtitles file:";
+subtitle_file_fieldset.appendChild(legend);
+
+// 創建第一行：文件上傳
+const uploadFileLine = document.createElement("div");
+uploadFileLine.className = "line";
+uploadFileLine.appendChild(document.createTextNode("Upload file: "));
+
+const fileInput = document.createElement("input");
+fileInput.type = "file";
+fileInput.accept = ".srt,.vtt,.ass,.ssa";
+fileInput.id = "subtitle_file_input";
+fileInput.autocomplete = "off";
+uploadFileLine.appendChild(fileInput);
+
+subtitle_file_fieldset.appendChild(uploadFileLine);
+
+// 創建第二行：URL 輸入
+const urlLine = document.createElement("div");
+urlLine.className = "line";
+urlLine.appendChild(document.createTextNode("Or from URL (zip supported): "));
+
+const urlInput = document.createElement("input");
+urlInput.type = "text";
+urlInput.id = "subtitle_url_input";
+urlInput.autocomplete = "off";
+urlLine.appendChild(urlInput);
+
+subtitle_file_fieldset.appendChild(urlLine);
+
+// 創建第三行：按鈕和錯誤訊息
+const buttonLine = document.createElement("div");
+buttonLine.className = "line";
+
+const uploadButton = document.createElement("button");
+uploadButton.id = "subtitle_upload_button";
+uploadButton.textContent = "Upload";
+buttonLine.appendChild(uploadButton);
+
+buttonLine.appendChild(document.createTextNode(" "));
+
+const retryButton = document.createElement("button");
+retryButton.id = "retry_button";
+retryButton.style.display = "none";
+retryButton.textContent = "重試";
+buttonLine.appendChild(retryButton);
+
+buttonLine.appendChild(document.createTextNode(" "));
+
+const errorMessage = document.createElement("span");
+errorMessage.id = "upload_error_message";
+buttonLine.appendChild(errorMessage);
+
+subtitle_file_fieldset.appendChild(buttonLine);
+
+// 創建進度容器
+const progressContainer = document.createElement("div");
+progressContainer.id = "upload_progress_container";
+subtitle_file_fieldset.appendChild(progressContainer);
+
 menu.appendChild(subtitle_file_fieldset);
 
 var subtitle_offset_line = document.createElement("div");
