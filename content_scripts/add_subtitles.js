@@ -666,7 +666,7 @@ class NetworkRetry {
     }
 }
 
-// 簡繁轉換系統 - 純 OpenCC-JS 方案
+// 簡繁轉換系統 - 本地 OpenCC-JS 方案
 class ChineseConverter {
     constructor() {
         this.initialized = false;
@@ -683,51 +683,37 @@ class ChineseConverter {
                 return;
             }
             
-            // 動態載入 OpenCC-JS
-            await this.loadOpenCCScript();
+            // 等待本地OpenCC腳本載入完成
+            await this.waitForOpenCC();
             this.setupOpenCC();
         } catch (error) {
-            console.warn('OpenCC 載入失敗，字幕將保持原文:', error);
+            console.warn('OpenCC 初始化失敗，字幕將保持原文:', error);
             this.initialized = true;
         }
     }
     
-    loadOpenCCScript() {
+    waitForOpenCC() {
         return new Promise((resolve, reject) => {
-            // 檢查是否已經有載入中的腳本
-            if (document.querySelector('script[src*="opencc-js"]')) {
-                // 等待載入完成
-                const checkInterval = setInterval(() => {
-                    if (typeof window.OpenCC !== 'undefined') {
-                        clearInterval(checkInterval);
-                        resolve();
-                    }
-                }, 100);
-                
-                // 10秒後超時
-                setTimeout(() => {
-                    clearInterval(checkInterval);
-                    reject(new Error('OpenCC 載入超時'));
-                }, 10000);
+            // 如果已經載入，直接返回
+            if (typeof window.OpenCC !== 'undefined') {
+                resolve();
                 return;
             }
             
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/cn2t.js';
-            script.onload = () => {
-                console.log('OpenCC-JS 載入成功');
-                resolve();
-            };
-            script.onerror = () => {
-                console.warn('OpenCC-JS CDN 載入失敗，嘗試備用 CDN');
-                // 嘗試備用 CDN
-                const fallbackScript = document.createElement('script');
-                fallbackScript.src = 'https://unpkg.com/opencc-js@1.0.5/dist/umd/cn2t.js';
-                fallbackScript.onload = resolve;
-                fallbackScript.onerror = reject;
-                document.head.appendChild(fallbackScript);
-            };
-            document.head.appendChild(script);
+            // 設置檢查間隔
+            const checkInterval = setInterval(() => {
+                if (typeof window.OpenCC !== 'undefined') {
+                    clearInterval(checkInterval);
+                    clearTimeout(timeout);
+                    resolve();
+                }
+            }, 100);
+            
+            // 10秒後超時
+            const timeout = setTimeout(() => {
+                clearInterval(checkInterval);
+                reject(new Error('OpenCC 載入超時'));
+            }, 10000);
         });
     }
     
