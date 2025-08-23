@@ -1,15 +1,17 @@
 /*!
  * OpenCC-JS v1.0.5 - Simplified Chinese to Traditional Chinese Converter
  * 
- * OFFICIAL SOURCE: Downloaded from nk2028/opencc-js official repository
- * Repository: https://github.com/nk2028/opencc-js
- * Release: https://github.com/nk2028/opencc-js/releases/tag/v1.0.5
- * NPM Package: https://www.npmjs.com/package/opencc-js/v/1.0.5
- * Official CDN: https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/cn2t.js
+ * THIRD-PARTY LIBRARY INFORMATION (Required by Mozilla Add-ons Review):
+ * ====================================================================
+ * Official Repository: https://github.com/nk2028/opencc-js
+ * Official Release: https://github.com/nk2028/opencc-js/releases/tag/v1.0.5
+ * License: MIT License
+ * Original File: dist/umd/cn2t.js (downloaded from official release)
+ * File renamed from cn2t.js to opencc-cn2t.js for clarity (no code modifications)
  * 
- * License: MIT
+ * For complete third-party library documentation, see: THIRD_PARTY_LIBRARIES.md
+ * 
  * Copyright (c) nk2028 organization
- * 
  * This file provides Simplified Chinese to Traditional Chinese conversion
  * capabilities for browser environments.
  */
