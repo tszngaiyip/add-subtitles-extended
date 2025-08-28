@@ -1097,7 +1097,14 @@ async function parse_subtitles(subs, format = 'auto') {
         subtitles.length = 0;
         
         // Check cache - use safe encoding for non-ASCII characters
-        const cacheKey = encodeURIComponent(subs.substring(0, 1000)).substring(0, 100); // Use first 1000 characters as cache key, encoded safely
+        let cacheKey;
+        try {
+            cacheKey = encodeURIComponent(subs.substring(0, 1000)).substring(0, 100); // Use first 1000 characters as cache key, encoded safely
+        } catch (error) {
+            // Fallback: use a hash of the content length and first few ASCII characters
+            cacheKey = 'fallback_' + subs.length + '_' + subs.substring(0, 50).replace(/[^\x00-\x7F]/g, "");
+            console.warn('Cache key generation fallback used due to encoding issue:', error);
+        }
         if (subtitleCache.has(cacheKey)) {
             const cached = subtitleCache.get(cacheKey);
             subtitles.push(...cached);
@@ -2009,8 +2016,9 @@ function readFileAsText(file, progressCallback) {
         };
         
         file_reader.onerror = function(event){
+            const errorMessage = event.target.error ? event.target.error.message : 'Unknown file reading error';
             reject(new SubtitleError(
-                `File reading failed: ${event.target.error}`,
+                `File reading failed: ${errorMessage}. Please ensure the file is not corrupted and contains valid subtitle content.`,
                 'FILE_READ_ERROR'
             ));
         };
@@ -2023,6 +2031,7 @@ function readFileAsText(file, progressCallback) {
             }
         };
         
+        // Read as text with UTF-8 encoding (default)
         file_reader.readAsText(file);
     });
 }
