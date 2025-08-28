@@ -87,7 +87,8 @@ class FileValidator {
                 break;
             case 'ass':
             case 'ssa':
-                if (!content.includes('[Events]') || !content.includes('[Script Info]')) {
+                const lowerContent = content.toLowerCase();
+                if (!lowerContent.includes('[events]') || !lowerContent.includes('[script info]')) {
                     throw new SubtitleError('ASS/SSA format validation failed: missing required sections', 'INVALID_ASS_FORMAT');
                 }
                 break;
@@ -108,8 +109,8 @@ class FileValidator {
         const sequenceNumber = parseInt(firstBlock[0]);
         if (isNaN(sequenceNumber)) return false;
         
-        // Check time format
-        const timePattern = /^\d{2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{2}:\d{2}:\d{2},\d{3}$/;
+        // Check time format - allow both single and double digit hours
+        const timePattern = /^\d{1,2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{1,2}:\d{2}:\d{2},\d{3}$/;
         return timePattern.test(firstBlock[1]);
     }
 }
@@ -2111,6 +2112,9 @@ function updateConverterStatus() {
     if (status.openccLoaded && status.hasConverter) {
         statusElement.textContent = "OpenCC Loaded";
         statusElement.style.color = "green";
+    } else if (status.initialized && !status.openccLoaded) {
+        statusElement.textContent = "Fallback Mode (Keep Original)";
+        statusElement.style.color = "orange";
     } else if (status.initialized) {
         statusElement.textContent = "Load Failed (Keep Original)";
         statusElement.style.color = "red";
