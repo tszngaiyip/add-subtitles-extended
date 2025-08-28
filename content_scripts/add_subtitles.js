@@ -679,7 +679,7 @@ class ChineseConverter {
     async initOpenCC() {
         try {
             // Check if OpenCC is already loaded
-            if (typeof window.OpenCC !== 'undefined') {
+            if (typeof window.OpenCC !== 'undefined' && window.OpenCC.Converter) {
                 this.setupOpenCC();
                 return;
             }
@@ -696,14 +696,14 @@ class ChineseConverter {
     waitForOpenCC() {
         return new Promise((resolve, reject) => {
             // If already loaded, return directly
-            if (typeof window.OpenCC !== 'undefined') {
+            if (typeof window.OpenCC !== 'undefined' && window.OpenCC.Converter) {
                 resolve();
                 return;
             }
             
             // Set check interval
             const checkInterval = setInterval(() => {
-                if (typeof window.OpenCC !== 'undefined') {
+                if (typeof window.OpenCC !== 'undefined' && window.OpenCC.Converter) {
                     clearInterval(checkInterval);
                     clearTimeout(timeout);
                     resolve();
@@ -720,7 +720,7 @@ class ChineseConverter {
     
     setupOpenCC() {
         try {
-            // Create Simplified to Traditional Chinese converter
+            // Create Simplified to Traditional Chinese converter using correct API
             this.converter = window.OpenCC.Converter({ from: 'cn', to: 'tw' });
             this.openccLoaded = true;
             this.initialized = true;
@@ -759,7 +759,7 @@ class ChineseConverter {
 }
 
 // Create global converter instance
-const chineseConverter = new ChineseConverter();
+let chineseConverter = new ChineseConverter();
 
 
 
@@ -1096,8 +1096,8 @@ async function parse_subtitles(subs, format = 'auto') {
         // Clear existing subtitles
         subtitles.length = 0;
         
-        // Check cache
-        const cacheKey = btoa(subs.substring(0, 1000)); // Use first 1000 characters as cache key
+        // Check cache - use safe encoding for non-ASCII characters
+        const cacheKey = encodeURIComponent(subs.substring(0, 1000)).substring(0, 100); // Use first 1000 characters as cache key, encoded safely
         if (subtitleCache.has(cacheKey)) {
             const cached = subtitleCache.get(cacheKey);
             subtitles.push(...cached);
@@ -2117,11 +2117,13 @@ shadow_root.getElementById("reload_converter").addEventListener("click", functio
     statusElement.textContent = "Reloading...";
     statusElement.style.color = "orange";
     
-    // Create new converter instance
-    window.chineseConverter = new ChineseConverter();
+    // Create new converter instance and reinitialize properly
+    chineseConverter = new ChineseConverter();
     
-    // Wait one second then update status
-    setTimeout(updateConverterStatus, 1000);
+    // Wait for initialization and update status
+    setTimeout(() => {
+        updateConverterStatus();
+    }, 1000);
 });
 
 // Periodically update converter status
