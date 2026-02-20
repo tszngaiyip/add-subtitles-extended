@@ -1,7 +1,7 @@
 {
     "manifest_version": 2,
     "name": "Add Subtitles",
-    "version": "1.63",
+    "version": "1.64",
     "description": "Add subtitles to a video element.",
     "homepage_url": "https://github.com/tszngaiyip/add-subtitles-extended",
     "icons": {
@@ -27,6 +27,10 @@
     "browser_specific_settings": {
         "gecko": {
             "id": "add-subtitles-extended-ver2@tszngaiyip.github.io"
+            ,
+            "data_collection_permissions": {
+                "required": ["none"]
+            }
         }
     }
 }
